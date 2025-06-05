@@ -1,0 +1,9 @@
+﻿name: VoiceChat
+version: 1.0
+main: org.cvas.MyPlugin
+api-version: 1.20
+commands:
+  setvoicechatdistance:
+    description: Set the distance for proximity voice chat
+  connectvoicechat:
+    description: Connect to voice chat web page

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Minecraft Voice Chat</title>
+  </head>
+  <body>
+    <h1>Voice Chat Connected</h1>
+    <p>Keep this tab open to talk to nearby players.</p>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+
+      const ws = new WebSocket(
+        `ws://${location.hostname}:8080/?token=${token}`
+      );
+
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then((stream) => {
+          const context = new AudioContext();
+          const input = context.createMediaStreamSource(stream);
+          const processor = context.createScriptProcessor(2048, 1, 1);
+
+          input.connect(processor);
+          processor.connect(context.destination);
+
+          processor.onaudioprocess = (e) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              const audioData = e.inputBuffer.getChannelData(0);
+              // Convert Float32 to Int16
+              const int16Buffer = new Int16Array(audioData.length);
+              for (let i = 0; i < audioData.length; i++) {
+                let s = Math.max(-1, Math.min(1, audioData[i]));
+                int16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+              }
+              ws.send(int16Buffer.buffer);
+            }
+          };
+
+          ws.onmessage = async (e) => {
+            let arrayBuffer;
+            if (e.data instanceof Blob) {
+              arrayBuffer = await e.data.arrayBuffer();
+            } else {
+              arrayBuffer = e.data;
+            }
+            // Convert Int16 back to Float32
+            const int16 = new Int16Array(arrayBuffer);
+            const float32 = new Float32Array(int16.length);
+            for (let i = 0; i < int16.length; i++) {
+              float32[i] = int16[i] / 0x8000;
+            }
+            const output = context.createBuffer(
+              1,
+              float32.length,
+              context.sampleRate
+            );
+            output.copyToChannel(float32, 0);
+
+            // --- Seamless playback queue ---
+            if (!window._audioQueue) {
+              window._audioQueue = [];
+              window._audioQueueTime = context.currentTime;
+            }
+            const queue = window._audioQueue;
+            let queueTime = window._audioQueueTime;
+            const now = context.currentTime;
+            if (queueTime < now) queueTime = now;
+
+            const source = context.createBufferSource();
+            source.buffer = output;
+            source.connect(context.destination);
+            source.start(queueTime);
+
+            // Update queue time for next buffer
+            window._audioQueueTime = queueTime + output.duration;
+          };
+        })
+        .catch((err) => {
+          alert("Microphone access is required.");
+          console.error(err);
+        });
+    </script>
+  </body>
+</html>
