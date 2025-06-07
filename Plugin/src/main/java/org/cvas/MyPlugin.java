@@ -9,6 +9,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -53,7 +56,7 @@ public class MyPlugin extends JavaPlugin implements CommandExecutor, Listener {
                 String url = "http://localhost:3000/?token=" + token;
 
                 // Send token to server
-                registerTokenWithServer(token, player.getName());
+                saveTokenToFile(token, player);
 
                 // Create clickable message
                 TextComponent message = new TextComponent("§a[Click here to join voice chat]");
@@ -70,56 +73,36 @@ public class MyPlugin extends JavaPlugin implements CommandExecutor, Listener {
 
         return false;
     }
-    private void registerTokenWithServer(String token, String playerName) {
-        // Check if token is null or empty
+    private final File tokenFile = new File(getDataFolder(), "tokens.txt");
+
+    private void saveTokenToFile(String token, Player player) {
         if (token == null || token.trim().isEmpty()) {
-            getLogger().severe("Token is null or empty for player: " + playerName);
+            getLogger().severe("Token is null or empty for player: " + player.getName());
             return;
         }
 
-        // Also check if playerName is valid
-        if (playerName == null || playerName.trim().isEmpty()) {
-            getLogger().severe("Player name is null or empty");
-            return;
-        }
+        Location loc = player.getLocation();
+        String entry = String.format("%s,%s,%.2f,%.2f,%.2f%n",
+                player.getName(), token.trim(), loc.getX(), loc.getY(), loc.getZ());
 
         try {
-            URL url = new URL("http://localhost:3000/registerToken");
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("POST");
-            con.setRequestProperty("api-key", API_KEY);
-            con.setRequestProperty("Content-Type", "application/json");
-            con.setDoOutput(true);
-
-            String json = String.format("{\"token\":\"%s\", \"playerName\":\"%s\"}",
-                    token.trim(), playerName.trim());
-            getLogger().info("Sending request body: " + json);
-
-            try (OutputStream os = con.getOutputStream()) {
-                byte[] input = json.getBytes("utf-8");
-                os.write(input, 0, input.length);
-                os.flush();
+            if (!tokenFile.exists()) {
+                getDataFolder().mkdirs();
+                tokenFile.createNewFile();
             }
 
-            int code = con.getResponseCode();
-            if (code == 200) {
-                getLogger().info("Successfully registered token for " + playerName);
-            } else {
-                getLogger().warning("Failed to register token (code " + code + ")");
-                // Also log the response body for debugging
-                try (Scanner scanner = new Scanner(con.getErrorStream())) {
-                    String response = scanner.useDelimiter("\\A").next();
-                    getLogger().warning("Server response: " + response);
-                } catch (Exception e) {
-                    getLogger().warning("Could not read error response");
-                }
+            try (FileWriter fw = new FileWriter(tokenFile, true)) {
+                fw.write(entry);
             }
 
-        } catch (Exception e) {
-            getLogger().warning("Error registering token: " + e.getMessage());
+            getLogger().info("Saved token and location for player: " + player.getName());
+
+        } catch (IOException e) {
+            getLogger().warning("Failed to save token: " + e.getMessage());
             e.printStackTrace();
         }
     }
+
 
 
     public int getVoiceChatDistance() {

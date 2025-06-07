@@ -10,44 +10,24 @@ const app = express();
 const httpPort = 3000;
 const wsPort = 8080;
 
-const validTokens = new Map(); // token => playerName or UUID
+let validTokens = new Map(); // token => playerName or UUID
+let validTokensFilePath = null;
 
-// Log all incoming requests (method, path, headers) - move to top
-app.use((req, res, next) => {
-  console.log(`Incoming request: ${req.method} ${req.url}`);
-  console.log('Headers:', req.headers);
-  next();
-});
-// Debug middleware: log raw body for all POST requests
-const rawBodySaver = (req, res, buf, encoding) => {
-  if (buf && buf.length) {
-    req.rawBody = buf.toString(encoding || 'utf8');
-    console.log('Raw body:', req.rawBody);
-  }
-};
-app.use(express.json({ verify: rawBodySaver }));
-
+app.use(express.json());
 
 // ✅ Register token from Minecraft plugin
 app.post('/registerToken', (req, res) => {
   const apiKey = req.headers['api-key'];
-  console.log(`Received registration request with API key: ${apiKey}`);
+  
   if (apiKey !== API_SECRET) {
     return res.status(403).json({ error: 'Invalid API key' });
   }
-
-  // Debug: log the entire request body
-  console.log('Request body:', req.body);
   const { token, playerName } = req.body;
 
   if (!token || !playerName) {
     return res.status(400).json({ error: 'Missing token or playerName' });
   }
-
-  console.log(`Registering token: ${token} for player ${playerName}`);
-
   validTokens.set(token, playerName);
-  console.log(`✅ Registered token: ${token} for player ${playerName}`);
   res.json({ success: true });
 });
 
@@ -103,4 +83,18 @@ app.listen(httpPort, () => {
 app.use((err, req, res, next) => {
   console.error('Express error:', err);
   res.status(500).json({ error: 'Internal server error', details: err.message });
+});
+
+// GET endpoint to set the valid tokens file path
+app.get('/setTokensFile', (req, res) => {
+  const apiKey = req.headers['api-key'];
+  if (apiKey !== API_SECRET) {
+    return res.status(403).json({ error: 'Invalid API key' });
+  }
+  const { path: filePath } = req.query;
+  if (!filePath) {
+    return res.status(400).json({ error: 'Missing file path' });
+  }
+  validTokensFilePath = filePath;
+  res.json({ success: true, filePath });
 });
