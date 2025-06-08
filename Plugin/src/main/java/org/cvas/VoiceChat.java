@@ -40,6 +40,12 @@ public class VoiceChat extends JavaPlugin implements CommandExecutor, Listener {
         return false;
     }
 
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        FileManager.removePlayer(player);
+    }
+
     private boolean handleSetVoiceChatDistance(CommandSender sender, String[] args) {
         if (!sender.isOp()) {
             sender.sendMessage("You must be an admin to use this command.");
@@ -79,9 +85,5 @@ public class VoiceChat extends JavaPlugin implements CommandExecutor, Listener {
         return true;
     }
 
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        Player player = event.getPlayer();
-        FileManager.removePlayer(player);
-    }
+
 }

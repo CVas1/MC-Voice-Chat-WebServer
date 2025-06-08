@@ -1,4 +1,4 @@
-﻿package org.cvas;
+package org.cvas;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
