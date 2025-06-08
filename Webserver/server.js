@@ -1,116 +1,195 @@
-const express = require("express");
-const { WebSocketServer } = require("ws");
-const { v4: uuid } = require("uuid");
-const path = require("path");
-const url = require("url");
-const fs = require("fs");
-
-const API_SECRET =
-  "NTueHos6cGG55QIFbYlOqANZcCOYWQlqscuWVonyhNodLZlTP6Tdk2TQA3YqAR3KpYjHY86eExDGip0HhD1ClQLYuQWB9dnTPcVm4kaUyW1JUSzrEInllrD2lcUUwhGm5n3PGlYbqaeP25nMwRUuDhvdgH9AWjs9uGIglGWDcw0Jve6jU9uek8Q56Xj9PjTctXfRbLwNXto6I17YwjrIhd0yU09bTVMJFizAMl4wmPEyTl1yH9uMeX2Er3tR4MkjH9sEYUeJIfYT9u9WfGPK4gJt301XtivuMfWeU25CpzzXSiN3Cabn5nRAaqImfDfMkw2gH4ZkGDwB9N9bPwzipAMFn5Vq2Bw90ReqGJxoDp1a07DtpMLHUrGOAshAW3bVvPtCRc5N9fH7QH7Yg2RTjnwW2ZYV8SHCsZ0UlpdDq6XEUwD08qb2XKJFrEERcG5tbFjX5Tg7G83M6tyuaCJzkvuHjtOWguJhUdHkm3E3AqWM7yQVCtVive1jKP1LIPpF";
-const TOKENS_FILE_PATH = path.join(__dirname, "../plugins/VoiceChat/tokens.txt");
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
-const httpPort = 3000;
-const wsPort = 8080;
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-let validTokens = new Map(); // token => full line
-let playerLocations = new Map(); // token => { x, y, z }
+const PORT = 3000;
+const TOKENS_FILE = "C:\\Users\\Admin\\Desktop\\MCServer\\plugins\\VoiceChat\\tokens.txt";
+const PROXIMITY_DISTANCE = 30;
 
-// Function to reload tokens from file and update playerLocations
-function reloadTokens() {
+// Store connected players
+const connectedPlayers = new Map();
+
+// Middleware
+app.use(express.static('public'));
+app.use(express.json());
+
+// Function to read and parse tokens file
+function readTokens() {
   try {
-    const data = fs.readFileSync(TOKENS_FILE_PATH, "utf8");
-    const newTokens = new Map();
-    const newLocations = new Map();
-    data.split(/\r?\n/).forEach((line) => {
-      const trimmed = line.trim();
-      if (trimmed) {
-        const parts = trimmed.split(",");
-        const token = parts[0];
-        newTokens.set(token, trimmed); // Store full line for reference
-        if (parts.length >= 5) {
-          // Parse location if available
-          const x = parseFloat(parts[2]);
-          const y = parseFloat(parts[3]);
-          const z = parseFloat(parts[4]);
-          newLocations.set(token, { x, y, z });
-        }
+    const data = fs.readFileSync(TOKENS_FILE, 'utf8');
+    const lines = data.trim().split('\n');
+    const tokens = new Map();
+    
+    lines.forEach(line => {
+      const parts = line.split(',');
+      if (parts.length === 5) {
+        const [name, token, x, y, z] = parts;
+        tokens.set(token, {
+          name: name.trim(),
+          token: token.trim(),
+          x: parseFloat(x),
+          y: parseFloat(y),
+          z: parseFloat(z)
+        });
       }
     });
-    validTokens = newTokens;
-    playerLocations = newLocations;
-  } catch (err) {
-    console.error("Failed to reload tokens:", err.message);
-    validTokens = new Map();
-    playerLocations = new Map();
+    
+    return tokens;
+  } catch (error) {
+    console.error('Error reading tokens file:', error);
+    return new Map();
   }
 }
 
-// Initial load
-reloadTokens();
-// Reload every second
-setInterval(reloadTokens, 1000);
+// Function to calculate 3D distance between two points
+function calculateDistance(pos1, pos2) {
+  const dx = pos1.x - pos2.x;
+  const dy = pos1.y - pos2.y;
+  const dz = pos1.z - pos2.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
 
-app.use(express.json());
-
-// ✅ Serve HTML only if token is valid
-app.get("/", (req, res) => {
-  const token = req.query.token;
-
-  const validTokenList = Array.from(validTokens.keys()).join(", ");
-  if (!validTokens.has(token)) {
-    return res
-      .status(403)
-      .send(
-        `<h1>Access Denied</h1><p>Invalid token. Valid tokens: ${validTokenList}</p>`
-      );
-  }
-
-  res.sendFile(path.join(__dirname, "public/index.html"));
-});
-
-// ✅ WebSocket auth
-const wss = new WebSocketServer({ port: wsPort });
-const clients = {};
-
-wss.on("connection", (ws, req) => {
-  const query = url.parse(req.url, true).query;
-  const token = query.token;
-
-  if (!validTokens.has(token)) {
-    ws.close();
-    console.log(`Blocked connection with invalid token: ${token}`);
-    return;
-  }
-
-  const id = uuid();
-  clients[id] = ws;
-  console.log(`Client connected: ${id} (${validTokens.get(token)})`);
-
-  ws.on("message", (message) => {
-    for (const [clientId, client] of Object.entries(clients)) {
-      if (client !== ws && client.readyState === ws.OPEN) {
-        client.send(message);
+// Function to find players within proximity
+function findNearbyPlayers(playerToken) {
+  const tokens = readTokens();
+  const currentPlayer = tokens.get(playerToken);
+  
+  if (!currentPlayer) return [];
+  
+  const nearbyPlayers = [];
+  
+  for (const [token, playerData] of connectedPlayers) {
+    if (token !== playerToken) {
+      const tokenData = tokens.get(token);
+      if (tokenData) {
+        const distance = calculateDistance(currentPlayer, tokenData);
+        if (distance <= PROXIMITY_DISTANCE) {
+          nearbyPlayers.push({
+            token,
+            name: tokenData.name,
+            distance: Math.round(distance * 100) / 100
+          });
+        }
       }
     }
+  }
+  
+  return nearbyPlayers;
+}
+
+// Routes
+app.get('/', (req, res) => {
+  const token = req.query.token;
+  
+  if (!token) {
+    return res.status(400).send('Token is required');
+  }
+  
+  const tokens = readTokens();
+  const playerData = tokens.get(token);
+  
+  if (!playerData) {
+    return res.status(404).send('Invalid token');
+  }
+  
+  // Serve the index.html directly
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+    socket.on('join', (data) => {
+    const { token } = data;
+    const tokens = readTokens();
+    
+    if (tokens.has(token)) {
+      const playerData = tokens.get(token);
+      socket.token = token;
+      socket.playerName = playerData.name;
+      connectedPlayers.set(token, {
+        socketId: socket.id,
+        name: playerData.name,
+        socket: socket
+      });
+      
+      console.log(`Player ${playerData.name} joined with token ${token}`);
+      
+      // Send player info and initial nearby players
+      socket.emit('player-info', { token, name: playerData.name });
+      const nearbyPlayers = findNearbyPlayers(token);
+      socket.emit('nearby-players', nearbyPlayers);
+      
+      // Notify other players about this player
+      socket.broadcast.emit('player-joined', { token, name: playerData.name });
+    } else {
+      socket.emit('error', 'Invalid token');
+      socket.disconnect();
+    }
   });
-
-  ws.on("close", () => {
-    delete clients[id];
-    console.log(`Client disconnected: ${id}`);
+  
+  socket.on('check-proximity', () => {
+    if (socket.token) {
+      const nearbyPlayers = findNearbyPlayers(socket.token);
+      socket.emit('nearby-players', nearbyPlayers);
+    }
+  });
+  
+  // WebRTC signaling
+  socket.on('offer', (data) => {
+    const targetPlayer = connectedPlayers.get(data.target);
+    if (targetPlayer) {
+      targetPlayer.socket.emit('offer', {
+        offer: data.offer,
+        from: socket.token,
+        fromName: socket.playerName
+      });
+    }
+  });
+  
+  socket.on('answer', (data) => {
+    const targetPlayer = connectedPlayers.get(data.target);
+    if (targetPlayer) {
+      targetPlayer.socket.emit('answer', {
+        answer: data.answer,
+        from: socket.token,
+        fromName: socket.playerName
+      });
+    }
+  });
+  
+  socket.on('ice-candidate', (data) => {
+    const targetPlayer = connectedPlayers.get(data.target);
+    if (targetPlayer) {
+      targetPlayer.socket.emit('ice-candidate', {
+        candidate: data.candidate,
+        from: socket.token,
+        fromName: socket.playerName
+      });
+    }
+  });
+  
+  socket.on('disconnect', () => {
+    if (socket.token) {
+      connectedPlayers.delete(socket.token);
+      console.log(`Player ${socket.playerName} disconnected`);
+      socket.broadcast.emit('player-left', { token: socket.token, name: socket.playerName });
+    }
   });
 });
 
-app.listen(httpPort, () => {
-  console.log(`Web server running at http://localhost:${httpPort}`);
+// Start server
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
-
-// Error handler for debugging 500 errors
-app.use((err, req, res, next) => {
-  console.error("Express error:", err);
-  res
-    .status(500)
-    .json({ error: "Internal server error", details: err.message });
-});
-
-

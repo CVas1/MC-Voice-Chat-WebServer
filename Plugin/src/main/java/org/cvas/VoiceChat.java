@@ -21,8 +21,10 @@ public class VoiceChat extends JavaPlugin implements CommandExecutor, Listener {
 
     @Override
     public void onEnable() {
-        getLogger().info("VoiceChat plugin enabled");
+        getLogger().info("\u001B[32mVoiceChat plugin enabled\u001B[0m");
         Bukkit.getPluginManager().registerEvents(this, this);
+
+        FileManager.FileCreate(); // Ensure the token file is created
 
         // Schedule repeating task to update player positions every second (20 ticks)
         Bukkit.getScheduler().runTaskTimer(this, () -> {

@@ -2,86 +2,486 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Minecraft Voice Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Minecraft Proximity Voice Chat</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        margin: 0;
+        padding: 20px;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .player-info {
+        background: #f0f8ff;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+
+      .nearby-players {
+        background: #f9f9f9;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+
+      .player-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px;
+        margin: 5px 0;
+        background: white;
+        border-radius: 5px;
+        border-left: 4px solid #4caf50;
+      }
+
+      .player-item.connected {
+        border-left-color: #2196f3;
+        background: #e3f2fd;
+      }
+
+      .controls {
+        text-align: center;
+        margin: 20px 0;
+      }
+
+      button {
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 0 10px;
+        font-size: 16px;
+      }
+
+      button:hover {
+        background: #45a049;
+      }
+
+      button:disabled {
+        background: #cccccc;
+        cursor: not-allowed;
+      }
+
+      .status {
+        text-align: center;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+      }
+
+      .status.connected {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .status.disconnected {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .distance {
+        font-size: 12px;
+        color: #666;
+      }
+    </style>
   </head>
   <body>
-    <h1>Voice Chat Connected</h1>
-    <p>Keep this tab open to talk to nearby players.</p>
+    <div class="container">
+      <div class="header">
+        <h1>🎮 Minecraft Proximity Voice Chat</h1>
+      </div>
 
+      <div class="player-info">
+        <h3>Your Info</h3>
+        <p><strong>Name:</strong> <span id="playerName">Loading...</span></p>
+        <p><strong>Token:</strong> <span id="playerToken">Loading...</span></p>
+      </div>
+
+      <div class="controls">
+        <button id="startVoice">🎤 Start Voice Chat</button>
+        <button id="stopVoice" disabled>🔇 Stop Voice Chat</button>
+        <button id="refreshPlayers">🔄 Refresh Players</button>
+      </div>
+
+      <div id="status" class="status disconnected">
+        Not connected to voice chat
+      </div>
+
+      <div class="nearby-players">
+        <h3>Nearby Players (within 30 blocks)</h3>
+        <div id="nearbyList">
+          <p>No nearby players found</p>
+        </div>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
+      class ProximityVoiceChat {        constructor() {
+          this.socket = io();
+          this.localStream = null;
+          this.peerConnections = new Map();
+          this.isVoiceActive = false;
+          this.proximityCheckInterval = null;
 
-      const ws = new WebSocket(
-        `ws://${location.hostname}:8080/?token=${token}`
-      );
+          this.initializeElements();
+          this.setupSocketEvents();
+          this.setupUI();
+          this.joinRoom();
+        }
 
-      navigator.mediaDevices
-        .getUserMedia({ audio: true })
-        .then((stream) => {
-          const context = new AudioContext();
-          const input = context.createMediaStreamSource(stream);
-          const processor = context.createScriptProcessor(2048, 1, 1);
+        initializeElements() {
+          this.startVoiceBtn = document.getElementById("startVoice");
+          this.stopVoiceBtn = document.getElementById("stopVoice");
+          this.refreshBtn = document.getElementById("refreshPlayers");
+          this.statusDiv = document.getElementById("status");
+          this.nearbyList = document.getElementById("nearbyList");
+          this.playerNameSpan = document.getElementById("playerName");
+          this.playerTokenSpan = document.getElementById("playerToken");
+        }        setupUI() {
+          const urlParams = new URLSearchParams(window.location.search);
+          this.token = urlParams.get("token");
+          this.playerName = null; // Will be set when server responds
 
-          input.connect(processor);
-          processor.connect(context.destination);
+          this.playerNameSpan.textContent = "Loading...";
+          this.playerTokenSpan.textContent = this.token || "Unknown";
 
-          processor.onaudioprocess = (e) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              const audioData = e.inputBuffer.getChannelData(0);
-              // Convert Float32 to Int16
-              const int16Buffer = new Int16Array(audioData.length);
-              for (let i = 0; i < audioData.length; i++) {
-                let s = Math.max(-1, Math.min(1, audioData[i]));
-                int16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          this.startVoiceBtn.addEventListener("click", () =>
+            this.startVoiceChat()
+          );
+          this.stopVoiceBtn.addEventListener("click", () =>
+            this.stopVoiceChat()
+          );
+          this.refreshBtn.addEventListener("click", () =>
+            this.refreshPlayers()
+          );
+        }        joinRoom() {
+          this.socket.emit("join", {
+            token: this.token
+          });
+        }        setupSocketEvents() {
+          this.socket.on("player-info", (data) => {
+            this.playerName = data.name;
+            this.playerNameSpan.textContent = this.playerName;
+          });
+
+          this.socket.on("nearby-players", (players) => {
+            this.updateNearbyPlayers(players);
+          });
+
+          this.socket.on("offer", async (data) => {
+            await this.handleOffer(data);
+          });
+
+          this.socket.on("answer", async (data) => {
+            await this.handleAnswer(data);
+          });
+
+          this.socket.on("ice-candidate", async (data) => {
+            await this.handleIceCandidate(data);
+          });
+
+          this.socket.on("player-left", (data) => {
+            this.handlePlayerLeft(data);
+          });
+
+          this.socket.on("error", (message) => {
+            alert("Error: " + message);
+          });
+        }        updateNearbyPlayers(players) {
+          // Get current nearby player tokens
+          const nearbyTokens = new Set(players.map((p) => p.token));
+
+          // Disconnect from players who are no longer nearby
+          this.peerConnections.forEach((peerConnection, playerToken) => {
+            if (!nearbyTokens.has(playerToken)) {
+              this.disconnectFromPlayer(playerToken, "too far away");
+            }
+          });
+
+          // Update the nearby players list
+          if (players.length === 0) {
+            this.nearbyList.innerHTML = "<p>No nearby players found</p>";
+            return;
+          }
+
+          const html = players
+            .map((player) => {
+              const isConnected = this.peerConnections.has(player.token);
+              const connectionStatus = isConnected
+                ? "Voice connected"
+                : "Not connected";
+              const connectedClass = isConnected ? "connected" : "";
+
+              return `
+            <div class="player-item ${connectedClass}" id="player-${player.token}">
+                <div>
+                    <strong>${player.name}</strong>
+                    <div class="distance">${player.distance} blocks away</div>
+                </div>
+                <div id="connection-${player.token}">${connectionStatus}</div>
+            </div>
+        `;
+            })
+            .join("");
+
+          this.nearbyList.innerHTML = html;
+
+          // Auto-connect to nearby players if voice is active
+          if (this.isVoiceActive) {
+            players.forEach((player) => {
+              if (!this.peerConnections.has(player.token)) {
+                console.log(`Auto-connecting to nearby player: ${player.name} (${player.distance} blocks away)`);
+                this.connectToPlayer(player.token);
               }
-              ws.send(int16Buffer.buffer);
-            }
-          };
+            });
+          }
+        }async startVoiceChat() {
+          try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: false,
+            });
 
-          ws.onmessage = async (e) => {
-            let arrayBuffer;
-            if (e.data instanceof Blob) {
-              arrayBuffer = await e.data.arrayBuffer();
-            } else {
-              arrayBuffer = e.data;
-            }
-            // Convert Int16 back to Float32
-            const int16 = new Int16Array(arrayBuffer);
-            const float32 = new Float32Array(int16.length);
-            for (let i = 0; i < int16.length; i++) {
-              float32[i] = int16[i] / 0x8000;
-            }
-            const output = context.createBuffer(
-              1,
-              float32.length,
-              context.sampleRate
+            this.isVoiceActive = true;
+            this.startVoiceBtn.disabled = true;
+            this.stopVoiceBtn.disabled = false;
+
+            this.updateStatus("Connected to voice chat", "connected");
+
+            // Start automatic proximity checking
+            this.startProximityCheck();
+
+            // Connect to all nearby players
+            this.refreshPlayers();
+          } catch (error) {
+            console.error("Error accessing microphone:", error);
+            alert("Could not access microphone. Please check permissions.");
+          }
+        }        stopVoiceChat() {
+          if (this.localStream) {
+            this.localStream.getTracks().forEach((track) => track.stop());
+            this.localStream = null;
+          }
+
+          // Stop automatic proximity checking
+          this.stopProximityCheck();
+
+          // Close all peer connections
+          this.peerConnections.forEach((pc) => pc.close());
+          this.peerConnections.clear();
+
+          this.isVoiceActive = false;
+          this.startVoiceBtn.disabled = false;
+          this.stopVoiceBtn.disabled = true;
+
+          this.updateStatus("Not connected to voice chat", "disconnected");
+        }
+
+        async connectToPlayer(playerToken) {
+          if (this.peerConnections.has(playerToken) || !this.isVoiceActive) {
+            return;
+          }
+
+          const peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          });
+
+          this.peerConnections.set(playerToken, peerConnection);
+
+          // Add local stream
+          if (this.localStream) {
+            this.localStream.getTracks().forEach((track) => {
+              peerConnection.addTrack(track, this.localStream);
+            });
+          }
+
+          // Handle remote stream
+          peerConnection.ontrack = (event) => {
+            const remoteAudio = new Audio();
+            remoteAudio.srcObject = event.streams[0];
+            remoteAudio
+              .play()
+              .catch((e) => console.log("Audio play failed:", e));
+
+            // Update UI
+            const connectionDiv = document.getElementById(
+              `connection-${playerToken}`
             );
-            output.copyToChannel(float32, 0);
-
-            // --- Seamless playback queue ---
-            if (!window._audioQueue) {
-              window._audioQueue = [];
-              window._audioQueueTime = context.currentTime;
+            if (connectionDiv) {
+              connectionDiv.textContent = "Voice connected";
+              connectionDiv.parentElement.classList.add("connected");
             }
-            const queue = window._audioQueue;
-            let queueTime = window._audioQueueTime;
-            const now = context.currentTime;
-            if (queueTime < now) queueTime = now;
-
-            const source = context.createBufferSource();
-            source.buffer = output;
-            source.connect(context.destination);
-            source.start(queueTime);
-
-            // Update queue time for next buffer
-            window._audioQueueTime = queueTime + output.duration;
           };
-        })
-        .catch((err) => {
-          alert("Microphone access is required.");
-          console.error(err);
+
+          // Handle ICE candidates
+          peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+              this.socket.emit("ice-candidate", {
+                target: playerToken,
+                candidate: event.candidate,
+              });
+            }
+          };
+
+          // Create and send offer
+          const offer = await peerConnection.createOffer();
+          await peerConnection.setLocalDescription(offer);
+
+          this.socket.emit("offer", {
+            target: playerToken,
+            offer: offer,
+          });
+        }
+
+        async handleOffer(data) {
+          if (!this.isVoiceActive) return;
+
+          const peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          });
+
+          this.peerConnections.set(data.from, peerConnection);
+
+          // Add local stream
+          if (this.localStream) {
+            this.localStream.getTracks().forEach((track) => {
+              peerConnection.addTrack(track, this.localStream);
+            });
+          }
+
+          // Handle remote stream
+          peerConnection.ontrack = (event) => {
+            const remoteAudio = new Audio();
+            remoteAudio.srcObject = event.streams[0];
+            remoteAudio
+              .play()
+              .catch((e) => console.log("Audio play failed:", e));
+
+            // Update UI
+            const connectionDiv = document.getElementById(
+              `connection-${data.from}`
+            );
+            if (connectionDiv) {
+              connectionDiv.textContent = "Voice connected";
+              connectionDiv.parentElement.classList.add("connected");
+            }
+          };
+
+          // Handle ICE candidates
+          peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+              this.socket.emit("ice-candidate", {
+                target: data.from,
+                candidate: event.candidate,
+              });
+            }
+          };
+
+          await peerConnection.setRemoteDescription(data.offer);
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+
+          this.socket.emit("answer", {
+            target: data.from,
+            answer: answer,
+          });
+        }
+
+        async handleAnswer(data) {
+          const peerConnection = this.peerConnections.get(data.from);
+          if (peerConnection) {
+            await peerConnection.setRemoteDescription(data.answer);
+          }
+        }
+
+        async handleIceCandidate(data) {
+          const peerConnection = this.peerConnections.get(data.from);
+          if (peerConnection) {
+            await peerConnection.addIceCandidate(data.candidate);
+          }
+        }        handlePlayerLeft(data) {
+          this.disconnectFromPlayer(data.token, "player left");
+
+          // Update UI - remove player from the list
+          const playerDiv = document.getElementById(`player-${data.token}`);
+          if (playerDiv) {
+            playerDiv.remove();
+          }
+        }refreshPlayers() {
+          this.socket.emit("check-proximity");
+        }
+
+        startProximityCheck() {
+          // Clear any existing interval
+          this.stopProximityCheck();
+          
+          // Check proximity every 3 seconds
+          this.proximityCheckInterval = setInterval(() => {
+            if (this.isVoiceActive) {
+              console.log("Automatic proximity check...");
+              this.socket.emit("check-proximity");
+            }
+          }, 3000);
+        }
+
+        stopProximityCheck() {
+          if (this.proximityCheckInterval) {
+            clearInterval(this.proximityCheckInterval);
+            this.proximityCheckInterval = null;
+          }
+        }
+
+        disconnectFromPlayer(playerToken, reason = "disconnected") {
+          const peerConnection = this.peerConnections.get(playerToken);
+          if (peerConnection) {
+            console.log(`Disconnecting from ${playerToken} - ${reason}`);
+            peerConnection.close();
+            this.peerConnections.delete(playerToken);
+
+            // Update UI to show disconnection
+            const connectionDiv = document.getElementById(`connection-${playerToken}`);
+            if (connectionDiv) {
+              connectionDiv.textContent = reason === "too far away" ? "Disconnected (too far)" : "Disconnected";
+              connectionDiv.parentElement.classList.remove("connected");
+            }
+          }
+        }
+
+        updateStatus(message, type) {
+          this.statusDiv.textContent = message;
+          this.statusDiv.className = `status ${type}`;
+        }
+      }      // Initialize when page loads
+      window.addEventListener("load", () => {
+        const voiceChat = new ProximityVoiceChat();
+        
+        // Clean up when page is closed
+        window.addEventListener("beforeunload", () => {
+          voiceChat.stopProximityCheck();
+          voiceChat.stopVoiceChat();
         });
+      });
     </script>
   </body>
 </html>

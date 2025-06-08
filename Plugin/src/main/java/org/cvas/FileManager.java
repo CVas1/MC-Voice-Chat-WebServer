@@ -1,24 +1,30 @@
 package org.cvas;
 
 import org.bukkit.Location;
+import org.bukkit.command.CommandExecutor;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.FileWriter;
 import java.io.IOException;
 
-public class FileManager extends JavaPlugin {
+public class FileManager extends JavaPlugin implements CommandExecutor, Listener {
     private static final String FILE_PATH = "plugins/VoiceChat/tokens.txt";
 
     public static String getFilePath() {
         return FILE_PATH;
     }
-    @Override
-    public void onEnable() {
-        // Remove previous saved tokens file on enable
+
+    public static void FileCreate() {
         java.io.File tokenFile = new java.io.File(FILE_PATH);
+        //clean txt
         if (tokenFile.exists()) {
-            tokenFile.delete();
+            try (FileWriter writer = new FileWriter(tokenFile, false)) {
+                writer.write(""); // Clear the file
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -39,9 +45,15 @@ public class FileManager extends JavaPlugin {
                 tokenFile.createNewFile();
             }
 
-            try (FileWriter fw = new FileWriter(tokenFile, true)) {
-                fw.write(entry);
-            }
+            // Remove existing line for this player
+            java.util.List<String> lines = java.nio.file.Files.readAllLines(tokenFile.toPath());
+            String playerName = player.getName();
+            lines.removeIf(line -> {
+                String[] parts = line.split(",");
+                return parts.length >= 2 && parts[0].equals(playerName);
+            });
+            lines.add(entry.trim()); // add new entry (trim to remove extra newline)
+            java.nio.file.Files.write(tokenFile.toPath(), lines, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
         } catch (IOException e) {
             e.printStackTrace();
         }
