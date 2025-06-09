@@ -39,12 +39,21 @@ class VoiceChatRoom {
         
         console.log(`Player ${playerData.username} (${playerId}) joined voice chat`);
         this.broadcastPlayerList();
-    }
-
-    removeClient(playerId) {
+    }    removeClient(playerId) {
         const client = this.clients.get(playerId);
         if (client) {
             console.log(`Player ${client.username} (${playerId}) left voice chat`);
+            
+            // Notify other clients about disconnection
+            this.clients.forEach((otherClient, otherPlayerId) => {
+                if (otherPlayerId !== playerId && otherClient.ws.readyState === WebSocket.OPEN) {
+                    otherClient.ws.send(JSON.stringify({
+                        type: 'player_disconnected',
+                        playerId: playerId
+                    }));
+                }
+            });
+            
             this.clients.delete(playerId);
             this.broadcastPlayerList();
         }
@@ -140,9 +149,7 @@ class VoiceChatRoom {
             return client.isMuted;
         }
         return false;
-    }
-
-    toggleDeafen(playerId) {
+    }    toggleDeafen(playerId) {
         const client = this.clients.get(playerId);
         if (client) {
             client.isDeafened = !client.isDeafened;
@@ -150,6 +157,21 @@ class VoiceChatRoom {
             return client.isDeafened;
         }
         return false;
+    }
+
+    forwardWebRTCSignal(fromPlayerId, toPlayerId, signalType, signalData) {
+        const fromClient = this.clients.get(fromPlayerId);
+        const toClient = this.clients.get(toPlayerId);
+        
+        if (fromClient && toClient && toClient.ws.readyState === WebSocket.OPEN) {
+            toClient.ws.send(JSON.stringify({
+                type: signalType,
+                fromPlayerId: fromPlayerId,
+                data: signalData
+            }));
+            
+            console.log(`Forwarded ${signalType} from ${fromClient.username} to ${toClient.username}`);
+        }
     }
 }
 
@@ -190,10 +212,17 @@ wss.on('connection', (ws, req) => {
                         message: 'Successfully joined voice chat'
                     }));
                     break;
-                
-                case 'voice_data':
+                  case 'voice_data':
                     if (playerId) {
                         voiceRoom.broadcastVoiceData(playerId, data.audioData);
+                    }
+                    break;
+                
+                case 'webrtc_offer':
+                case 'webrtc_answer':
+                case 'webrtc_ice':
+                    if (playerId && data.targetPlayerId) {
+                        voiceRoom.forwardWebRTCSignal(playerId, data.targetPlayerId, data.type, data.data);
                     }
                     break;
                 
@@ -268,7 +297,7 @@ app.post('/api/player/join', (req, res) => {
         return res.status(400).json({ error: 'Missing playerId or username' });
     }
     
-    // Generate voice chat link
+    // Generate voice chat URL
     const voiceChatUrl = `${req.protocol}://${req.get('host')}/voice?player=${playerId}&username=${encodeURIComponent(username)}`;
     
     res.json({
@@ -279,9 +308,19 @@ app.post('/api/player/join', (req, res) => {
     });
 });
 
-// Serve the voice chat client
+// Serve the voice chat client (WebRTC)
 app.get('/voice', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'voice-client.html'));
+    res.sendFile(path.join(__dirname, 'public', 'voice-client-webrtc.html'));
+});
+
+// Legacy route for WebRTC client (for backward compatibility)
+app.get('/voice-webrtc', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'voice-client-webrtc.html'));
+});
+
+// Serve the compatibility test page
+app.get('/test', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'compatibility-test.html'));
 });
 
 // Serve the main index page
@@ -302,6 +341,7 @@ server.listen(PORT, () => {
     console.log(`Minecraft Voice Chat Server running on port ${PORT}`);
     console.log(`Voice chat client: http://localhost:${PORT}/voice`);
     console.log(`Health check: http://localhost:${PORT}/api/health`);
+    console.log(`Compatibility test: http://localhost:${PORT}/test`);
 });
 
 // Graceful shutdown

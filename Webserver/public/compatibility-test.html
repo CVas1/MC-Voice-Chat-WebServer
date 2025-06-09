@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Chat Compatibility Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .test-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #ddd;
+        }
+
+        .test-item.pass {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+
+        .test-item.fail {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+
+        .test-item.warn {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 4px;
+            color: white;
+        }
+
+        .status.pass {
+            background: #28a745;
+        }
+
+        .status.fail {
+            background: #dc3545;
+        }
+
+        .status.warn {
+            background: #ffc107;
+            color: #856404;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .btn.primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn.primary:hover {
+            background: #0056b3;
+        }
+
+        .btn.success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn.success:hover {
+            background: #1e7e34;
+        }
+
+        .recommendations {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .recommendations h3 {
+            color: #1976d2;
+            margin-bottom: 15px;
+        }
+
+        .recommendations ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .recommendations li {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #2196f3;
+        }
+
+        .voice-links {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .voice-links {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎤 Voice Chat Compatibility Test</h1>
+            <p>Check if your browser supports Minecraft Voice Chat</p>
+        </div>
+
+        <div id="testResults">
+            <!-- Test results will be populated here -->
+        </div>
+
+        <button id="testMic" class="btn primary">Test Microphone Access</button>
+        
+        <div id="micTestResult" style="margin-top: 20px; display: none;">
+            <div class="test-item">
+                <span>Microphone Test</span>
+                <span id="micStatus" class="status">Testing...</span>
+            </div>
+        </div>
+
+        <div class="voice-links">
+            <button onclick="window.location.href='/voice-webrtc'" class="btn success">
+                🚀 WebRTC Voice Chat<br>
+                <small style="font-weight: normal;">Best Quality</small>
+            </button>
+            <button onclick="window.location.href='/voice'" class="btn primary">
+                🎵 Basic Voice Chat<br>
+                <small style="font-weight: normal;">Compatible</small>
+            </button>
+        </div>
+
+        <div id="recommendations" class="recommendations" style="display: none;">
+            <!-- Recommendations will be populated here -->
+        </div>
+    </div>
+
+    <script>
+        class CompatibilityTest {
+            constructor() {
+                this.tests = [
+                    { name: 'Browser Detection', test: this.testBrowser.bind(this) },
+                    { name: 'HTTPS/Secure Context', test: this.testSecureContext.bind(this) },
+                    { name: 'getUserMedia Support', test: this.testGetUserMedia.bind(this) },
+                    { name: 'Web Audio API', test: this.testWebAudio.bind(this) },
+                    { name: 'MediaRecorder API', test: this.testMediaRecorder.bind(this) },
+                    { name: 'WebRTC Support', test: this.testWebRTC.bind(this) },
+                    { name: 'Audio Element Support', test: this.testAudioElement.bind(this) }
+                ];
+                
+                this.results = {};
+                this.runTests();
+                this.setupMicTest();
+            }
+
+            async runTests() {
+                const resultsContainer = document.getElementById('testResults');
+                
+                for (const test of this.tests) {
+                    const result = await test.test();
+                    this.results[test.name] = result;
+                    
+                    const testElement = this.createTestElement(test.name, result);
+                    resultsContainer.appendChild(testElement);
+                }
+                
+                this.generateRecommendations();
+            }
+
+            createTestElement(name, result) {
+                const div = document.createElement('div');
+                div.className = `test-item ${result.status}`;
+                
+                div.innerHTML = `
+                    <span>${name}</span>
+                    <span class="status ${result.status}">${result.status.toUpperCase()}</span>
+                `;
+                
+                if (result.details) {
+                    const details = document.createElement('div');
+                    details.style.marginTop = '10px';
+                    details.style.fontSize = '14px';
+                    details.style.color = '#666';
+                    details.textContent = result.details;
+                    div.appendChild(details);
+                }
+                
+                return div;
+            }
+
+            testBrowser() {
+                const userAgent = navigator.userAgent;
+                let browser = 'Unknown';
+                let status = 'warn';
+                
+                if (userAgent.includes('Chrome')) {
+                    browser = 'Chrome';
+                    status = 'pass';
+                } else if (userAgent.includes('Firefox')) {
+                    browser = 'Firefox';
+                    status = 'pass';
+                } else if (userAgent.includes('Safari')) {
+                    browser = 'Safari';
+                    status = 'warn';
+                } else if (userAgent.includes('Edge')) {
+                    browser = 'Edge';
+                    status = 'pass';
+                }
+                
+                return {
+                    status,
+                    details: `Browser: ${browser}`
+                };
+            }
+
+            testSecureContext() {
+                const isSecure = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost';
+                
+                return {
+                    status: isSecure ? 'pass' : 'fail',
+                    details: isSecure ? 'Secure context (HTTPS or localhost)' : 'Requires HTTPS for microphone access'
+                };
+            }
+
+            testGetUserMedia() {
+                const hasGetUserMedia = !!(
+                    navigator.mediaDevices && navigator.mediaDevices.getUserMedia ||
+                    navigator.getUserMedia ||
+                    navigator.webkitGetUserMedia ||
+                    navigator.mozGetUserMedia ||
+                    navigator.msGetUserMedia
+                );
+                
+                return {
+                    status: hasGetUserMedia ? 'pass' : 'fail',
+                    details: hasGetUserMedia ? 'getUserMedia available' : 'No microphone access support'
+                };
+            }
+
+            testWebAudio() {
+                const hasWebAudio = !!(window.AudioContext || window.webkitAudioContext);
+                
+                return {
+                    status: hasWebAudio ? 'pass' : 'fail',
+                    details: hasWebAudio ? 'Web Audio API supported' : 'Web Audio API not available'
+                };
+            }
+
+            testMediaRecorder() {
+                const hasMediaRecorder = !!window.MediaRecorder;
+                
+                return {
+                    status: hasMediaRecorder ? 'pass' : 'warn',
+                    details: hasMediaRecorder ? 'MediaRecorder supported' : 'MediaRecorder not available (fallback will be used)'
+                };
+            }
+
+            testWebRTC() {
+                const hasWebRTC = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection);
+                
+                return {
+                    status: hasWebRTC ? 'pass' : 'fail',
+                    details: hasWebRTC ? 'WebRTC supported' : 'WebRTC not supported (use Basic Voice Chat)'
+                };
+            }
+
+            testAudioElement() {
+                try {
+                    const audio = document.createElement('audio');
+                    const canPlay = audio.canPlayType && (
+                        audio.canPlayType('audio/webm') ||
+                        audio.canPlayType('audio/mp4') ||
+                        audio.canPlayType('audio/wav')
+                    );
+                    
+                    return {
+                        status: canPlay ? 'pass' : 'warn',
+                        details: canPlay ? 'Audio playback supported' : 'Limited audio format support'
+                    };
+                } catch (error) {
+                    return {
+                        status: 'fail',
+                        details: 'Audio element not supported'
+                    };
+                }
+            }
+
+            setupMicTest() {
+                const testButton = document.getElementById('testMic');
+                const testResult = document.getElementById('micTestResult');
+                const micStatus = document.getElementById('micStatus');
+                
+                testButton.addEventListener('click', async () => {
+                    testResult.style.display = 'block';
+                    micStatus.textContent = 'Testing...';
+                    micStatus.className = 'status warn';
+                    
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        micStatus.textContent = 'PASS';
+                        micStatus.className = 'status pass';
+                        
+                        // Stop the stream
+                        stream.getTracks().forEach(track => track.stop());
+                        
+                        testButton.textContent = '✅ Microphone Working';
+                        testButton.className = 'btn success';
+                        
+                    } catch (error) {
+                        micStatus.textContent = 'FAIL';
+                        micStatus.className = 'status fail';
+                        
+                        testButton.textContent = '❌ Microphone Failed';
+                        testButton.className = 'btn primary';
+                        
+                        console.error('Microphone test failed:', error);
+                    }
+                });
+            }
+
+            generateRecommendations() {
+                const recommendationsDiv = document.getElementById('recommendations');
+                const recommendations = [];
+                
+                // Check overall compatibility
+                const failedTests = Object.entries(this.results).filter(([name, result]) => result.status === 'fail');
+                const warningTests = Object.entries(this.results).filter(([name, result]) => result.status === 'warn');
+                
+                if (failedTests.length === 0) {
+                    recommendations.push('✅ Your browser is fully compatible with voice chat!');
+                    if (this.results['WebRTC Support'].status === 'pass') {
+                        recommendations.push('🚀 Use WebRTC Voice Chat for the best experience');
+                    }
+                } else {
+                    recommendations.push('⚠️ Some features may not work properly');
+                    
+                    if (this.results['getUserMedia Support'].status === 'fail') {
+                        recommendations.push('🔄 Try updating your browser to the latest version');
+                        recommendations.push('🌐 Use Chrome, Firefox, or Edge for best compatibility');
+                    }
+                    
+                    if (this.results['HTTPS/Secure Context'].status === 'fail') {
+                        recommendations.push('🔒 Access the site via HTTPS or localhost');
+                    }
+                    
+                    if (this.results['WebRTC Support'].status === 'fail') {
+                        recommendations.push('📻 Use Basic Voice Chat instead of WebRTC');
+                    }
+                }
+                
+                if (warningTests.length > 0) {
+                    recommendations.push('📋 Some features may have limited functionality');
+                }
+                
+                // Display recommendations
+                if (recommendations.length > 0) {
+                    recommendationsDiv.style.display = 'block';
+                    recommendationsDiv.innerHTML = `
+                        <h3>Recommendations</h3>
+                        <ul>
+                            ${recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                        </ul>
+                    `;
+                }
+            }
+        }
+
+        // Start the compatibility test when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new CompatibilityTest();
+        });
+    </script>
+</body>
+</html>

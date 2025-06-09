@@ -202,7 +202,9 @@ This uses `nodemon` to automatically restart the server when files change.
 Webserver/
 ├── server.js                 # Main WebSocket server
 ├── public/
-│   └── voice-client.html     # Voice chat web interface
+│   ├── index.html           # Main server status page
+│   ├── compatibility-test.html # Browser compatibility test
+│   └── voice-client-webrtc.html # WebRTC voice chat interface
 ├── MinecraftVoiceChatPlugin.java  # Bukkit plugin source
 ├── plugin.yml               # Plugin manifest
 ├── config.yml              # Plugin configuration

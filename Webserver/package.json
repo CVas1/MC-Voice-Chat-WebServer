@@ -8,14 +8,20 @@
     "dev": "nodemon server.js",
     "test": "node test-server.js"
   },
-  "keywords": ["minecraft", "voice-chat", "websocket", "webrtc"],
+  "keywords": [
+    "minecraft",
+    "voice-chat",
+    "websocket",
+    "webrtc"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "ws": "^8.14.2",
+    "simple-peer": "^9.11.1",
     "uuid": "^9.0.1",
-    "cors": "^2.8.5"
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

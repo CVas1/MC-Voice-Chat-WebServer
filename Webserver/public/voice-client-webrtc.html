@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Voice Chat - WebRTC</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 90%;
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status.connecting {
+            background: #ffc107;
+            color: #856404;
+        }
+
+        .status.connected {
+            background: #28a745;
+            color: white;
+        }
+
+        .status.error {
+            background: #dc3545;
+            color: white;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn.primary:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        .btn.warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn.warning:hover:not(:disabled) {
+            background: #e0a800;
+        }
+
+        .btn.danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn.danger:hover:not(:disabled) {
+            background: #c82333;
+        }
+
+        .audio-visualizer {
+            background: #2c3e50;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .visualizer-bars {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            height: 60px;
+            gap: 2px;
+        }
+
+        .bar {
+            width: 4px;
+            background: linear-gradient(to top, #667eea, #764ba2);
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+
+        .players-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .players-list h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .player-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #28a745;
+        }
+
+        .player-status.muted {
+            background: #ffc107;
+        }
+
+        .player-status.deafened {
+            background: #dc3545;
+        }
+
+        .position-info {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .settings {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .settings h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .setting-item label {
+            font-weight: 500;
+            color: #555;
+        }
+
+        .slider {
+            width: 150px;
+            margin: 0 10px;
+        }
+
+        .log {
+            background: #1a1a1a;
+            color: #00ff00;
+            border-radius: 10px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .log div {
+            margin-bottom: 5px;
+        }
+
+        .connection-info {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .connection-info h4 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        .peer-connection {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #28a745;
+        }
+
+        .peer-connection.connecting {
+            border-left-color: #ffc107;
+        }
+
+        .peer-connection.failed {
+            border-left-color: #dc3545;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 20px;
+                padding: 20px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Minecraft Voice Chat (WebRTC)</h1>
+            <p id="playerInfo">Connecting...</p>
+        </div>
+
+        <div id="status" class="status connecting">
+            Connecting to voice server...
+        </div>
+
+        <div class="controls">
+            <button id="joinBtn" class="btn primary">Join Voice Chat</button>
+            <button id="muteBtn" class="btn warning" disabled>Mute</button>
+            <button id="deafenBtn" class="btn danger" disabled>Deafen</button>
+        </div>
+
+        <div class="audio-visualizer">
+            <h3 style="color: white; text-align: center; margin-bottom: 15px;">Voice Activity</h3>
+            <div class="visualizer-bars" id="visualizer">
+                <!-- Bars will be generated by JavaScript -->
+            </div>
+        </div>
+
+        <div class="connection-info">
+            <h4>WebRTC Connections</h4>
+            <div id="peerConnections">
+                <p style="text-align: center; color: #666;">No peer connections</p>
+            </div>
+        </div>
+
+        <div class="players-list">
+            <h3>Connected Players</h3>
+            <div id="playersList">
+                <p style="text-align: center; color: #666;">No players connected</p>
+            </div>
+        </div>
+
+        <div class="settings">
+            <h3>Audio Settings</h3>
+            <div class="setting-item">
+                <label>Output Volume:</label>
+                <input type="range" id="outputVolume" class="slider" min="0" max="1" step="0.1" value="0.8">
+                <span id="outputVolumeValue">0.8</span>
+            </div>
+            <div class="setting-item">
+                <label>Voice Activation Threshold:</label>
+                <input type="range" id="voiceThreshold" class="slider" min="0" max="100" step="5" value="30">
+                <span id="voiceThresholdValue">30</span>
+            </div>
+        </div>
+
+        <div id="log" class="log"></div>
+    </div>
+
+    <!-- Include Simple Peer from CDN -->
+    <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
+      <script>
+        class MinecraftVoiceChatWebRTC {
+            constructor() {
+                this.ws = null;
+                this.audioContext = null;
+                this.mediaStream = null;
+                this.sourceNode = null;
+                this.analyser = null;
+                this.isConnected = false;
+                this.isMuted = false;
+                this.isDeafened = false;
+                this.playerId = null;
+                this.username = null;
+                this.players = new Map();
+                this.peers = new Map(); // WebRTC peer connections
+                this.audioElements = new Map(); // Audio elements for each peer
+                
+                // Audio settings
+                this.outputVolume = 0.8;
+                this.voiceThreshold = 30;
+                
+                // Browser compatibility
+                this.browserSupport = this.checkBrowserSupport();
+                
+                this.init();
+            }            checkBrowserSupport() {
+                const support = {
+                    webrtc: false,
+                    getUserMedia: false,
+                    audioContext: false,
+                    mediaRecorder: false,
+                    browser: 'unknown'
+                };
+
+                // Detect browser
+                const userAgent = navigator.userAgent;
+                if (userAgent.includes('Chrome')) {
+                    support.browser = 'chrome';
+                } else if (userAgent.includes('Firefox')) {
+                    support.browser = 'firefox';
+                } else if (userAgent.includes('Safari')) {
+                    support.browser = 'safari';
+                } else if (userAgent.includes('Edge')) {
+                    support.browser = 'edge';
+                }
+
+                // Check WebRTC support
+                support.webrtc = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection);
+
+                // Check getUserMedia support (modern + legacy APIs)
+                support.getUserMedia = !!(
+                    (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ||
+                    navigator.getUserMedia ||
+                    navigator.webkitGetUserMedia ||
+                    navigator.mozGetUserMedia ||
+                    navigator.msGetUserMedia
+                );
+
+                // Check AudioContext support
+                support.audioContext = !!(window.AudioContext || window.webkitAudioContext);
+
+                // Check MediaRecorder support
+                support.mediaRecorder = !!window.MediaRecorder;
+
+                return support;
+            }init() {
+                this.displayBrowserCompatibility();
+                this.setupUI();
+                this.setupAudioContext();
+                this.parseURLParams();
+                this.setupVisualizer();
+            }            displayBrowserCompatibility() {
+                const statusElement = document.getElementById('status');
+                const joinBtn = document.getElementById('joinBtn');
+                  if (!this.browserSupport.webrtc) {
+                    statusElement.innerHTML = `
+                        <div style="background: #dc3545; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                            <h4>⚠️ WebRTC Not Supported</h4>
+                            <p><strong>Current Browser:</strong> ${this.browserSupport.browser}</p>
+                            <p><strong>WebRTC Support:</strong> ❌ Required for voice chat</p>
+                            <p><strong>Microphone Access:</strong> ${this.browserSupport.getUserMedia ? '✅' : '❌'}</p>
+                            <hr style="margin: 10px 0;">
+                            <p><strong>WebRTC Compatible Browsers:</strong></p>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Google Chrome (Latest)</li>
+                                <li>Mozilla Firefox (Latest)</li>
+                                <li>Microsoft Edge (Latest)</li>
+                                <li>Safari (macOS/iOS)</li>
+                            </ul>
+                            <p style="color: #ffeb3b;">Please use a compatible browser to access voice chat.</p>
+                        </div>
+                    `;
+                    joinBtn.disabled = true;
+                    joinBtn.textContent = 'WebRTC Not Supported';
+                    return;
+                }                if (!this.browserSupport.getUserMedia) {
+                    statusElement.innerHTML = `
+                        <div style="background: #dc3545; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                            <h4>⚠️ Microphone Access Not Available</h4>
+                            <p><strong>Current Browser:</strong> ${this.browserSupport.browser}</p>
+                            <p><strong>WebRTC Support:</strong> ✅</p>
+                            <p><strong>Microphone Access:</strong> ❌ Required for voice chat</p>
+                            <hr style="margin: 10px 0;">
+                            <p><strong>Requirements:</strong></p>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Modern browser with microphone support</li>
+                                <li>HTTPS connection (or localhost)</li>
+                                <li>Microphone permissions granted</li>
+                            </ul>
+                            <p style="color: #ffeb3b;">Please grant microphone permissions and refresh the page.</p>
+                        </div>
+                    `;
+                    joinBtn.disabled = true;
+                    joinBtn.textContent = 'Microphone Not Available';
+                    return;
+                }                // Show compatibility info for non-optimal browsers
+                if (this.browserSupport.browser !== 'chrome' && this.browserSupport.browser !== 'firefox') {
+                    statusElement.innerHTML = `
+                        <div style="background: #ffc107; color: #856404; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                            <h4>ℹ️ Browser Compatibility</h4>
+                            <p><strong>Current Browser:</strong> ${this.browserSupport.browser}</p>
+                            <p><strong>WebRTC Support:</strong> ✅ Available</p>
+                            <p><strong>Microphone Access:</strong> ✅ Available</p>
+                            <hr style="margin: 10px 0;">
+                            <p><strong>Note:</strong> For optimal performance, Chrome or Firefox are recommended.</p>
+                            <p>Voice chat should work, but you may experience reduced performance.</p>
+                        </div>
+                    `;
+                } else {
+                    // Show success for fully supported browsers
+                    statusElement.innerHTML = `
+                        <div style="background: #28a745; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                            <h4>✅ Browser Fully Supported</h4>
+                            <p><strong>Current Browser:</strong> ${this.browserSupport.browser}</p>
+                            <p><strong>WebRTC Support:</strong> ✅ Excellent</p>
+                            <p><strong>Microphone Access:</strong> ✅ Available</p>
+                            <p>Ready for high-quality peer-to-peer voice chat!</p>
+                        </div>
+                    `;
+                }
+            }
+
+            parseURLParams() {
+                const urlParams = new URLSearchParams(window.location.search);
+                this.playerId = urlParams.get('player');
+                this.username = urlParams.get('username') || 'Unknown Player';
+                
+                document.getElementById('playerInfo').textContent = `Welcome, ${this.username}!`;
+            }
+
+            setupUI() {
+                // Control buttons
+                document.getElementById('joinBtn').addEventListener('click', () => this.joinVoiceChat());
+                document.getElementById('muteBtn').addEventListener('click', () => this.toggleMute());
+                document.getElementById('deafenBtn').addEventListener('click', () => this.toggleDeafen());
+
+                // Audio settings
+                const outputVolumeSlider = document.getElementById('outputVolume');
+                const voiceThresholdSlider = document.getElementById('voiceThreshold');
+
+                outputVolumeSlider.addEventListener('input', (e) => {
+                    this.outputVolume = parseFloat(e.target.value);
+                    document.getElementById('outputVolumeValue').textContent = this.outputVolume.toFixed(1);
+                    
+                    // Update all audio elements volume
+                    this.audioElements.forEach(audio => {
+                        audio.volume = this.outputVolume;
+                    });
+                });
+
+                voiceThresholdSlider.addEventListener('input', (e) => {
+                    this.voiceThreshold = parseInt(e.target.value);
+                    document.getElementById('voiceThresholdValue').textContent = this.voiceThreshold;
+                });
+            }
+
+            setupAudioContext() {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            setupVisualizer() {
+                const visualizer = document.getElementById('visualizer');
+                for (let i = 0; i < 32; i++) {
+                    const bar = document.createElement('div');
+                    bar.className = 'bar';
+                    bar.style.height = '2px';
+                    visualizer.appendChild(bar);
+                }
+            }            async joinVoiceChat() {
+                try {
+                    this.updateStatus('Requesting microphone access...', 'connecting');
+                    
+                    // Get microphone access with fallback for older browsers
+                    this.mediaStream = await this.getUserMediaWithFallback({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                            sampleRate: 48000,
+                            channelCount: 1
+                        }
+                    });
+
+                    this.setupAudioProcessing();
+                    this.connectWebSocket();
+                    
+                } catch (error) {
+                    console.error('Error accessing microphone:', error);
+                    this.showBrowserAdvice(error);
+                    this.log('Error: ' + error.message);
+                }
+            }
+
+            async getUserMediaWithFallback(constraints) {
+                // Try modern API first
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    try {
+                        return await navigator.mediaDevices.getUserMedia(constraints);
+                    } catch (error) {
+                        this.log('Modern getUserMedia failed, trying with basic constraints...');
+                        // Try with simpler constraints
+                        return await navigator.mediaDevices.getUserMedia({ audio: true });
+                    }
+                }
+                
+                // Fallback to older APIs
+                const getUserMedia = navigator.getUserMedia || 
+                                   navigator.webkitGetUserMedia || 
+                                   navigator.mozGetUserMedia || 
+                                   navigator.msGetUserMedia;
+                
+                if (getUserMedia) {
+                    return new Promise((resolve, reject) => {
+                        getUserMedia.call(navigator, { audio: true }, resolve, reject);
+                    });
+                }
+                
+                throw new Error('getUserMedia is not supported in this browser');
+            }
+
+            showBrowserAdvice(error) {
+                const statusElement = document.getElementById('status');
+                statusElement.innerHTML = `
+                    <div style="background: #dc3545; color: white; padding: 15px; border-radius: 10px; text-align: left;">
+                        <h4>🎤 Microphone Access Failed</h4>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <hr style="margin: 10px 0;">
+                        <p><strong>Troubleshooting Steps:</strong></p>
+                        <ol style="margin: 10px 0; padding-left: 20px;">
+                            <li><strong>Use Chrome or Firefox</strong> - Best compatibility for WebRTC</li>
+                            <li><strong>Check URL:</strong> Must use HTTPS or localhost</li>
+                            <li><strong>Allow microphone:</strong> Click the microphone icon in address bar</li>
+                            <li><strong>Check permissions:</strong> Site Settings > Microphone</li>
+                            <li><strong>Restart browser</strong> if permissions were just changed</li>
+                            <li><strong>Try Basic Client:</strong> <a href="/voice" style="color: #ffc107;">Use fallback client</a> for older browsers</li>
+                        </ol>
+                        <p><strong>Current Browser:</strong> ${this.browserSupport.browser}</p>
+                        <p><strong>WebRTC Support:</strong> ${this.browserSupport.webrtc ? '✅ Yes' : '❌ No'}</p>
+                        <p><strong>Microphone Support:</strong> ${this.browserSupport.getUserMedia ? '✅ Yes' : '❌ No'}</p>
+                    </div>
+                `;
+            }
+
+            setupAudioProcessing() {
+                // Create audio nodes for visualization
+                this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+                this.analyser = this.audioContext.createAnalyser();
+                
+                // Configure analyser for voice visualization
+                this.analyser.fftSize = 2048;
+                this.analyser.smoothingTimeConstant = 0.8;
+                
+                // Connect nodes for visualization only
+                this.sourceNode.connect(this.analyser);
+                
+                // Start visual processing
+                this.startVisualProcessing();
+            }
+
+            startVisualProcessing() {
+                const bufferLength = this.analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                const processVisual = () => {
+                    if (!this.analyser) return;
+                    
+                    this.analyser.getByteFrequencyData(dataArray);
+                    
+                    // Calculate volume level
+                    const volume = dataArray.reduce((a, b) => a + b) / bufferLength;
+                    
+                    // Update visualizer
+                    this.updateVisualizer(dataArray);
+                    
+                    requestAnimationFrame(processVisual);
+                };
+                
+                processVisual();
+            }
+
+            connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws`;
+                
+                this.ws = new WebSocket(wsUrl);
+                
+                this.ws.onopen = () => {
+                    this.log('Connected to signaling server');
+                    this.updateStatus('Connected! Joining voice chat...', 'connecting');
+                    
+                    // Join the voice chat
+                    this.ws.send(JSON.stringify({
+                        type: 'join',
+                        playerId: this.playerId,
+                        username: this.username,
+                        position: { x: 0, y: 0, z: 0 }
+                    }));
+                };
+                
+                this.ws.onmessage = (event) => {
+                    this.handleWebSocketMessage(JSON.parse(event.data));
+                };
+                
+                this.ws.onclose = () => {
+                    this.isConnected = false;
+                    this.updateStatus('Disconnected from voice server', 'error');
+                    this.log('Disconnected from server');
+                    this.cleanup();
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    this.updateStatus('Connection error', 'error');
+                    this.log('Connection error: ' + error.message);
+                };
+            }
+
+            handleWebSocketMessage(data) {
+                switch (data.type) {
+                    case 'joined':
+                        this.isConnected = true;
+                        this.playerId = data.playerId;
+                        this.updateStatus('Successfully joined voice chat!', 'connected');
+                        this.enableControls();
+                        this.log(`Joined as player ID: ${this.playerId}`);
+                        break;
+                        
+                    case 'player_list':
+                        this.updatePlayersList(data.players);
+                        this.handlePlayerConnections(data.players);
+                        break;
+                        
+                    case 'webrtc_offer':
+                        this.handleWebRTCOffer(data);
+                        break;
+                        
+                    case 'webrtc_answer':
+                        this.handleWebRTCAnswer(data);
+                        break;
+                        
+                    case 'webrtc_ice':
+                        this.handleWebRTCIce(data);
+                        break;
+                        
+                    case 'position_update':
+                        this.handlePositionUpdate(data);
+                        break;
+                        
+                    case 'mute_status':
+                        this.isMuted = data.isMuted;
+                        this.updateMuteButton();
+                        this.updateAudioTracks();
+                        break;
+                        
+                    case 'deafen_status':
+                        this.isDeafened = data.isDeafened;
+                        this.updateDeafenButton();
+                        this.updateAudioPlayback();
+                        break;
+                        
+                    case 'player_disconnected':
+                        this.handlePlayerDisconnected(data.playerId);
+                        break;
+                        
+                    case 'error':
+                        this.log('Server error: ' + data.message);
+                        break;
+                }
+            }
+
+            handlePlayerConnections(players) {
+                const currentPlayerIds = new Set(players.map(p => p.playerId));
+                const existingPeerIds = new Set(this.peers.keys());
+                
+                // Create connections for new players
+                players.forEach(player => {
+                    if (player.playerId !== this.playerId && !this.peers.has(player.playerId)) {
+                        this.createPeerConnection(player.playerId, player.username, true);
+                    }
+                });
+                
+                // Remove connections for disconnected players
+                existingPeerIds.forEach(peerId => {
+                    if (!currentPlayerIds.has(peerId)) {
+                        this.removePeerConnection(peerId);
+                    }
+                });
+            }            createPeerConnection(peerId, username, initiator = false) {
+                this.log(`Creating ${initiator ? 'outgoing' : 'incoming'} connection to ${username}`);
+                
+                // WebRTC configuration with browser compatibility
+                const config = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+
+                // Add browser-specific optimizations
+                if (this.browserSupport.browser === 'firefox') {
+                    config.bundlePolicy = 'balanced';
+                } else if (this.browserSupport.browser === 'safari') {
+                    config.sdpSemantics = 'unified-plan';
+                }
+                
+                try {
+                    const peer = new SimplePeer({
+                        initiator,
+                        stream: this.mediaStream,
+                        config: config
+                    });
+                    
+                    peer.on('signal', (data) => {
+                        this.log(`Sending ${data.type} to ${username}`);
+                        this.ws.send(JSON.stringify({
+                            type: data.type === 'offer' ? 'webrtc_offer' : 
+                                  data.type === 'answer' ? 'webrtc_answer' : 'webrtc_ice',
+                            targetPlayerId: peerId,
+                            data: data
+                        }));
+                    });
+                    
+                    peer.on('stream', (stream) => {
+                        this.log(`Receiving audio stream from ${username}`);
+                        this.handleIncomingStream(peerId, stream);
+                    });
+                    
+                    peer.on('connect', () => {
+                        this.log(`Connected to ${username}`);
+                        this.updatePeerConnectionStatus(peerId, 'connected');
+                    });
+                    
+                    peer.on('error', (error) => {
+                        console.error(`Peer connection error with ${username}:`, error);
+                        this.log(`Connection error with ${username}: ${error.message}`);
+                        this.updatePeerConnectionStatus(peerId, 'failed');
+                        
+                        // Suggest fallback for persistent connection issues
+                        if (error.message.includes('ICE') || error.message.includes('DTLS')) {
+                            this.log(`Network issues detected. Consider using the basic voice client for better compatibility.`);
+                        }
+                    });
+                    
+                    peer.on('close', () => {
+                        this.log(`Connection closed with ${username}`);
+                        this.removePeerConnection(peerId);
+                    });
+                    
+                    this.peers.set(peerId, peer);
+                    this.players.set(peerId, { username, position: { x: 0, y: 0, z: 0 } });
+                    this.updatePeerConnectionStatus(peerId, 'connecting');
+                    
+                } catch (error) {
+                    console.error(`Failed to create peer connection with ${username}:`, error);
+                    this.log(`Failed to create connection with ${username}: ${error.message}`);
+                    this.updatePeerConnectionStatus(peerId, 'failed');
+                }
+            }
+
+            handleIncomingStream(peerId, stream) {
+                // Create audio element for this peer
+                const audio = document.createElement('audio');
+                audio.srcObject = stream;
+                audio.volume = this.outputVolume;
+                audio.autoplay = true;
+                
+                // Add to DOM (hidden)
+                audio.style.display = 'none';
+                document.body.appendChild(audio);
+                
+                this.audioElements.set(peerId, audio);
+                
+                // Apply proximity-based volume if we have position data
+                this.updateProximityVolume(peerId);
+            }
+
+            handleWebRTCOffer(data) {
+                const player = this.players.get(data.fromPlayerId);
+                const username = player ? player.username : 'Unknown';
+                
+                if (!this.peers.has(data.fromPlayerId)) {
+                    this.createPeerConnection(data.fromPlayerId, username, false);
+                }
+                
+                const peer = this.peers.get(data.fromPlayerId);
+                if (peer) {
+                    peer.signal(data.data);
+                }
+            }
+
+            handleWebRTCAnswer(data) {
+                const peer = this.peers.get(data.fromPlayerId);
+                if (peer) {
+                    peer.signal(data.data);
+                }
+            }
+
+            handleWebRTCIce(data) {
+                const peer = this.peers.get(data.fromPlayerId);
+                if (peer) {
+                    peer.signal(data.data);
+                }
+            }
+
+            handlePositionUpdate(data) {
+                if (this.players.has(data.playerId)) {
+                    this.players.get(data.playerId).position = data.position;
+                    this.updateProximityVolume(data.playerId);
+                }
+            }
+
+            updateProximityVolume(peerId) {
+                const audio = this.audioElements.get(peerId);
+                const player = this.players.get(peerId);
+                
+                if (audio && player) {
+                    // Simple distance-based volume (you can enhance this with your proximity logic)
+                    const distance = Math.sqrt(
+                        Math.pow(player.position.x, 2) + 
+                        Math.pow(player.position.y, 2) + 
+                        Math.pow(player.position.z, 2)
+                    );
+                    
+                    const maxDistance = 50;
+                    const volume = Math.max(0, Math.min(1, (maxDistance - distance) / maxDistance));
+                    
+                    audio.volume = volume * this.outputVolume;
+                }
+            }
+
+            handlePlayerDisconnected(playerId) {
+                this.removePeerConnection(playerId);
+            }
+
+            removePeerConnection(peerId) {
+                // Clean up peer connection
+                if (this.peers.has(peerId)) {
+                    const peer = this.peers.get(peerId);
+                    peer.destroy();
+                    this.peers.delete(peerId);
+                }
+                
+                // Clean up audio element
+                if (this.audioElements.has(peerId)) {
+                    const audio = this.audioElements.get(peerId);
+                    audio.remove();
+                    this.audioElements.delete(peerId);
+                }
+                
+                // Clean up player data
+                this.players.delete(peerId);
+                
+                // Update UI
+                this.updatePeerConnectionsUI();
+            }
+
+            updateAudioTracks() {
+                // Enable/disable audio tracks based on mute status
+                if (this.mediaStream) {
+                    this.mediaStream.getAudioTracks().forEach(track => {
+                        track.enabled = !this.isMuted;
+                    });
+                }
+            }
+
+            updateAudioPlayback() {
+                // Enable/disable audio playback based on deafen status
+                this.audioElements.forEach(audio => {
+                    audio.muted = this.isDeafened;
+                });
+            }
+
+            updatePeerConnectionStatus(peerId, status) {
+                const player = this.players.get(peerId);
+                if (player) {
+                    player.connectionStatus = status;
+                    this.updatePeerConnectionsUI();
+                }
+            }
+
+            updatePeerConnectionsUI() {
+                const container = document.getElementById('peerConnections');
+                
+                if (this.players.size === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #666;">No peer connections</p>';
+                    return;
+                }
+                
+                container.innerHTML = Array.from(this.players.entries()).map(([peerId, player]) => `
+                    <div class="peer-connection ${player.connectionStatus || 'connecting'}">
+                        <strong>${player.username}</strong>
+                        <span style="float: right; font-size: 12px;">
+                            ${(player.connectionStatus || 'connecting').toUpperCase()}
+                        </span>
+                    </div>
+                `).join('');
+            }
+
+            updateVisualizer(dataArray) {
+                const bars = document.querySelectorAll('.bar');
+                const step = Math.floor(dataArray.length / bars.length);
+                
+                bars.forEach((bar, index) => {
+                    const value = dataArray[index * step];
+                    const height = Math.max(2, (value / 255) * 60);
+                    bar.style.height = height + 'px';
+                });
+            }
+
+            updatePlayersList(players) {
+                const playersList = document.getElementById('playersList');
+                
+                if (players.length === 0) {
+                    playersList.innerHTML = '<p style="text-align: center; color: #666;">No players connected</p>';
+                    return;
+                }
+                
+                playersList.innerHTML = players.map(player => `
+                    <div class="player-item">
+                        <div class="player-info">
+                            <div class="player-status ${player.isMuted ? 'muted' : ''} ${player.isDeafened ? 'deafened' : ''}"></div>
+                            <div>
+                                <strong>${player.username}</strong>
+                                <div class="position-info">
+                                    Position: (${Math.round(player.position.x)}, ${Math.round(player.position.y)}, ${Math.round(player.position.z)})
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            toggleMute() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'toggle_mute' }));
+                }
+            }
+
+            toggleDeafen() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'toggle_deafen' }));
+                }
+            }
+
+            updateMuteButton() {
+                const muteBtn = document.getElementById('muteBtn');
+                muteBtn.textContent = this.isMuted ? 'Unmute' : 'Mute';
+                muteBtn.className = this.isMuted ? 'btn primary' : 'btn warning';
+            }
+
+            updateDeafenButton() {
+                const deafenBtn = document.getElementById('deafenBtn');
+                deafenBtn.textContent = this.isDeafened ? 'Undeafen' : 'Deafen';
+                deafenBtn.className = this.isDeafened ? 'btn primary' : 'btn danger';
+            }
+
+            enableControls() {
+                document.getElementById('muteBtn').disabled = false;
+                document.getElementById('deafenBtn').disabled = false;
+                document.getElementById('joinBtn').disabled = true;
+                document.getElementById('joinBtn').textContent = 'Connected';
+            }
+
+            updateStatus(message, type) {
+                const status = document.getElementById('status');
+                status.textContent = message;
+                status.className = `status ${type}`;
+            }
+
+            log(message) {
+                const logElement = document.getElementById('log');
+                const timestamp = new Date().toLocaleTimeString();
+                logElement.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+                logElement.scrollTop = logElement.scrollHeight;
+            }
+
+            cleanup() {
+                // Clean up all peer connections
+                this.peers.forEach(peer => peer.destroy());
+                this.peers.clear();
+                
+                // Clean up audio elements
+                this.audioElements.forEach(audio => audio.remove());
+                this.audioElements.clear();
+                
+                // Clean up player data
+                this.players.clear();
+                
+                // Update UI
+                this.updatePeerConnectionsUI();
+            }
+        }
+
+        // Initialize the voice chat when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new MinecraftVoiceChatWebRTC();
+        });
+    </script>
+</body>
+</html>
