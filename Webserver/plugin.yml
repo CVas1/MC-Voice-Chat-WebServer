@@ -1,7 +1,10 @@
-﻿name: VoiceChat
-version: 1.0
-main: org.cvas.VoiceChat
-api-version: 1.20
+name: MinecraftVoiceChat
+version: 1.0.0
+description: Proximity-based voice chat system for Minecraft
+author: YourName
+main: com.yourname.minecraftvoicechat.MinecraftVoiceChatPlugin
+api-version: 1.19
+
 commands:
   voicechat:
     description: Get your voice chat link

@@ -1,0 +1,15 @@
+# Minecraft Voice Chat Configuration
+
+# Voice server URL (change this to your Cloudflare tunnel URL)
+voice-server-url: "https://your-voice-chat-domain.com"
+
+# Player settings
+settings:
+  # How often to update player positions (in milliseconds)
+  position-update-interval: 1000
+  
+  # Minimum distance a player must move before sending an update
+  minimum-move-distance: 0.5
+  
+  # Maximum voice chat distance (in blocks)
+  max-voice-distance: 50

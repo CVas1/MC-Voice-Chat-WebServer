@@ -1,0 +1,29 @@
+# Minecraft Voice Chat Server Configuration
+
+# Cloudflare Tunnel Configuration
+# 1. Install cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
+# 2. Login to Cloudflare: cloudflared tunnel login
+# 3. Create a tunnel: cloudflared tunnel create minecraft-voice-chat
+# 4. Configure the tunnel using this file
+
+tunnel: minecraft-voice-chat
+credentials-file: /path/to/your/credentials.json
+
+ingress:
+  # Route voice chat to your local server
+  - hostname: your-voice-chat-domain.com
+    service: http://localhost:3000
+    originRequest:
+      # Enable WebSocket support
+      noTLSVerify: true
+      
+  # Health check endpoint
+  - hostname: your-voice-chat-domain.com
+    path: /api/health
+    service: http://localhost:3000
+    
+  # Catch-all rule (required)
+  - service: http_status:404
+
+# Run the tunnel with:
+# cloudflared tunnel --config tunnel.yml run minecraft-voice-chat

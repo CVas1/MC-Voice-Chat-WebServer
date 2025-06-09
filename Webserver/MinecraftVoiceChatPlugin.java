@@ -206,12 +206,8 @@ public class VoiceChat extends JavaPlugin implements Listener {
 
     private void sendVoiceChatLinkToPlayer(Player player, String voiceChatUrl) {
         player.sendMessage("§a=== Minecraft Voice Chat ===");
-        player.spigot().sendMessage(
-            net.md_5.bungee.api.chat.TextComponent.fromLegacyText("§7Click the link below to join voice chat:"));
-        net.md_5.bungee.api.chat.TextComponent link = new net.md_5.bungee.api.chat.TextComponent("§b§n" + voiceChatUrl);
-        link.setClickEvent(new net.md_5.bungee.api.chat.ClickEvent(
-            net.md_5.bungee.api.chat.ClickEvent.Action.OPEN_URL, voiceChatUrl));
-        player.spigot().sendMessage(link);
+        player.sendMessage("§7Click the link below to join voice chat:");
+        player.sendMessage("§b§n" + voiceChatUrl);
         player.sendMessage("§7Your voice volume will change based on proximity to other players!");
         player.sendMessage("§7Use /voicechat to get the link again.");
     }
